@@ -1,5 +1,6 @@
 #include "LIFOScheduler.h"
 #include "FIFOScheduler.h"
+#include "PriorityScheduler.h"
 #include <cassert>
 #include <fstream>
 #include <iostream>
@@ -28,12 +29,12 @@ csr_graph::csr_graph(vector<int> vertices, vector<pair<int, int> > edges) :
 
 
 void relax(int current, pair<int, int> neighbor, int * dist,
-        FIFOScheduler<int> &q) {
+        PriorityScheduler<pair<int, int> > &q) {
     int alt = dist[current] + neighbor.second;
 
     if (alt < dist[neighbor.first]) {
         dist[neighbor.first] = alt;
-        q.push(neighbor.first);
+        q.push(make_pair(dist[neighbor.first], neighbor.first));
     }
 }
 
@@ -46,12 +47,17 @@ int * dijkstra(csr_graph& graph, int source) {
 
     dist[source] = 0;
 
-    FIFOScheduler<int> q;
-    q.push(source);
+    PriorityScheduler<pair<int, int> > q;
+    q.push(make_pair(dist[source], source));
 
     int current;
+    pair<int, int> popped;
     while (!q.empty()) {
-        q.pop(current);
+        q.pop(popped);
+        if (dist[popped.second] != popped.first) {
+            continue;
+        }
+        current = popped.second;
 
         int start = graph.vertices[current];
         int end = graph.vertices.size() + 1;
@@ -61,7 +67,7 @@ int * dijkstra(csr_graph& graph, int source) {
 
         vector<thread> threads;
         for (int offset = start; offset < end; ++offset) {
-            threads.push_back(
+              threads.push_back(
                     thread(relax, current, graph.edges[offset], dist, ref(q)));
         }
 
