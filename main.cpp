@@ -1,3 +1,5 @@
+#include "LIFOScheduler.h"
+#include "FIFOScheduler.h"
 #include <cassert>
 #include <fstream>
 #include <iostream>
@@ -7,7 +9,6 @@
 #include <sstream>
 #include <thread>
 #include <queue>
-#include "BlockingQueue.h"
 #include <vector>
 using namespace std;
 
@@ -27,7 +28,7 @@ csr_graph::csr_graph(vector<int> vertices, vector<pair<int, int> > edges) :
 
 
 void relax(int current, pair<int, int> neighbor, int * dist,
-        BlockingQueue<int> &q) {
+        FIFOScheduler<int> &q) {
     int alt = dist[current] + neighbor.second;
 
     if (alt < dist[neighbor.first]) {
@@ -45,7 +46,7 @@ int * dijkstra(csr_graph& graph, int source) {
 
     dist[source] = 0;
 
-    BlockingQueue<int> q;
+    FIFOScheduler<int> q;
     q.push(source);
 
     int current;
@@ -61,7 +62,7 @@ int * dijkstra(csr_graph& graph, int source) {
         vector<thread> threads;
         for (int offset = start; offset < end; ++offset) {
             threads.push_back(
-                    thread(relax, current, graph.edges[offset], ref(dist), ref(q)));
+                    thread(relax, current, graph.edges[offset], dist, ref(q)));
         }
 
         for (auto& t: threads) {

@@ -1,5 +1,5 @@
-#ifndef BLOCKING_QUEUE_H
-#define BLOCK_QUEUE_H
+#ifndef FIFO_SCHEDULER_H
+#define FIFO_SCHEDULER_H
 
 #include <queue>
 #include <thread>
@@ -9,25 +9,13 @@ using namespace std;
 
  
 template <typename T>
-class BlockingQueue {
-    /* This class does not guarantee strong exception safety. */
+class FIFOScheduler {
     private:
         queue<T> q;
         mutex mtx;
         condition_variable cond;
 
     public: 
-        T pop() {
-            unique_lock<mutex> pop_lock(mtx); // automatically unlocks upon destruction
-            while (q.empty()) {
-                cond.wait(pop_lock);
-            }
-            T item = q.front();
-            q.pop();
-
-            return item;
-        }
-
         void pop(T& item) {
             unique_lock<mutex> pop_lock(mtx);
             while (q.empty()) {
