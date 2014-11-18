@@ -19,6 +19,9 @@ using namespace std;
 #define THREAD_COUNT 4
 
 
+mutex mtx;
+atomic<bool> done(false);
+
 class csr_graph {
     public:
         vector<int> vertices;
@@ -33,6 +36,28 @@ csr_graph::csr_graph(vector<int> vertices, vector<pair<int, int> > edges) :
 }
 
 
+void relaxLIFO(int current, pair<int, int> neighbor, int dist[],
+        LIFOScheduler<int> &q) {
+    int alt = dist[current] + neighbor.second;
+
+    if (alt < dist[neighbor.first]) {
+        dist[neighbor.first] = alt;
+        q.push(neighbor.first);
+    }
+}
+
+
+void relaxFIFO(int current, pair<int, int> neighbor, int dist[],
+        FIFOScheduler<int> &q) {
+    int alt = dist[current] + neighbor.second;
+
+    if (alt < dist[neighbor.first]) {
+        dist[neighbor.first] = alt;
+        q.push(neighbor.first);
+    }
+}
+
+
 void relax(int current, pair<int, int> neighbor, int dist[],
         PriorityScheduler<pair<int, int> > &q) {
     int alt = dist[current] + neighbor.second;
@@ -42,6 +67,7 @@ void relax(int current, pair<int, int> neighbor, int dist[],
         q.push(make_pair(dist[neighbor.first], neighbor.first));
     }
 }
+
 
 int * dijkstra(csr_graph& graph, int source, int thread_count) {
     int * dist = new int[graph.vertices.size()];
@@ -54,14 +80,19 @@ int * dijkstra(csr_graph& graph, int source, int thread_count) {
     PriorityScheduler<pair<int, int> > q;
     q.push(make_pair(dist[source], source));
 
+    cout << "Priority Queue:" << endl;
+
     int current;
     pair<int, int> popped;
     while (!q.empty()) {
         q.pop(popped);
+
         if (dist[popped.second] != popped.first) {
             continue;
         }
         current = popped.second;
+
+        cout << current << endl;
 
         int start = graph.vertices[current];
         int end = graph.vertices.size() + 1;
@@ -84,6 +115,86 @@ int * dijkstra(csr_graph& graph, int source, int thread_count) {
 }
 
 
+int * dijkstra_LIFO(csr_graph& graph, int source, int thread_count) {
+    int * dist = new int[graph.vertices.size()];
+    for (int i = 0; i < graph.vertices.size(); ++i) {
+        dist[i] = numeric_limits<int>::max();
+    }
+
+    dist[source] = 0;
+
+    LIFOScheduler<int> q;
+    q.push(source);
+
+    cout << "LIFO:" << endl;
+
+    int current;
+    while (!q.empty()) {
+        q.pop(current);
+
+        cout << current << endl;
+
+        int start = graph.vertices[current];
+        int end = graph.vertices.size() + 1;
+        if (current + 1 < end) {
+            end = graph.vertices[current + 1];
+        }
+
+
+        vector<thread> threads;
+        for (int offset = start; offset < end; ++offset) {
+              threads.push_back(
+                    thread(relaxLIFO, current, graph.edges[offset], dist, ref(q)));
+        }
+
+        for (auto& t: threads) {
+            t.join();
+        }
+    }
+    
+    return dist;
+}
+
+int * dijkstra_FIFO(csr_graph& graph, int source, int thread_count) {
+    int * dist = new int[graph.vertices.size()];
+    for (int i = 0; i < graph.vertices.size(); ++i) {
+        dist[i] = numeric_limits<int>::max();
+    }
+
+    dist[source] = 0;
+
+    FIFOScheduler<int> q;
+    q.push(source);
+
+    cout << "FIFO:" << endl;
+
+    int current;
+    while (!q.empty()) {
+        q.pop(current);
+
+        cout << "v: " << current << endl;
+
+        int start = graph.vertices[current];
+        int end = graph.vertices.size() + 1;
+        if (current + 1 < end) {
+            end = graph.vertices[current + 1];
+        }
+
+        vector<thread> threads;
+        for (int offset = start; offset < end; ++offset) {
+              threads.push_back(
+                    thread(relaxFIFO, current, graph.edges[offset], dist, ref(q)));
+        }
+
+        for (auto& t: threads) {
+            t.join();
+        }
+    }
+    
+    return dist;
+}
+
+
 void relax_work_stealing(int current, pair<int, int> neighbor, int dist[],
         PriorityScheduler<pair<int, int> > &q) {
     int alt = dist[current] + neighbor.second;
@@ -93,10 +204,6 @@ void relax_work_stealing(int current, pair<int, int> neighbor, int dist[],
         q.push(make_pair(dist[neighbor.first], neighbor.first));
     }
 }
-
-
-mutex mtx;
-atomic<bool> done(false);
 
 
 void work_stealing(csr_graph& graph, PriorityScheduler<pair<int, int> > schedulers[],
@@ -195,10 +302,10 @@ int * dijkstra_work_stealing(csr_graph& graph, int source, int thread_count) {
 int * profile(csr_graph& graph, int source) {
     char cache[10000000];
     memset(cache, 0, sizeof cache);
-    
+   
     long_long start_usec = PAPI_get_real_usec();
     
-    int * dist = dijkstra_work_stealing(graph, source, THREAD_COUNT);
+    int * dist = dijkstra_FIFO(graph, source, THREAD_COUNT);
     done = false;
 
     long_long end_usec = PAPI_get_real_usec();
@@ -301,7 +408,8 @@ int main() {
     assert(dist[7] == 8);
     assert(dist[8] == 14);
 
-    graph = build_graph("USA-road-t.USA.gr");
-    dist = profile(graph, 1);
+/*    graph = build_graph("USA-road-t.USA.gr");
+
+    dist = profile(graph, 1); */
 }
 
